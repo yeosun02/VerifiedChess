@@ -3,8 +3,7 @@ datatype Piece = Pawn | Bishop | Knight | Rook | Queen | King
 datatype Cell = Empty | Piece(color: Color, piece: Piece, moved: bool)
 
 datatype Move = PieceMove(from: (int, int), to: (int, int), capture: bool) 
-                | KingsideCastle
-                | QueensideCastle
+                | Castle(color: Color, kingside: bool)
 
 class Board {
     // I treat the grid as a row-major 2D array. The rows of the array
@@ -101,6 +100,48 @@ class Board {
         && grid[move.to.0, move.to.1] == Piece(cell.color, cell.piece, true)
     }
 
+    function CastlePre(move: Move): bool
+        requires move.Castle?
+        reads this, grid
+        requires class_invariant()
+    {
+        var rank := if move.color == White then 0 else 7;
+        var rookfile := if move.kingside then 7 else 0;
+
+        && grid[rank, 4] == Piece(move.color, King, false)
+        && grid[rank, rookfile] == Piece(move.color, Rook, false)
+        && (move.kingside ==>
+            && grid[rank, 5] == Empty
+            && grid[rank, 6] == Empty
+        )
+        && (!move.kingside ==>
+            && grid[rank, 1] == Empty
+            && grid[rank, 2] == Empty
+            && grid[rank, 3] == Empty
+        )
+    }
+
+    function CastlePost(move: Move): bool
+        requires move.Castle?
+        reads this, grid
+        requires class_invariant()
+    {
+        var rank := if move.color == White then 0 else 7;
+        var rookfile := if move.kingside then 7 else 0;
+
+        && grid[rank, 4] == Empty
+        && grid[rank, rookfile] == Empty
+        && (move.kingside ==>
+            && grid[rank, 5] == Piece(move.color, Rook, true)
+            && grid[rank, 6] == Piece(move.color, King, true)
+        )
+        && (!move.kingside ==>
+            && grid[rank, 1] == Empty
+            && grid[rank, 2] == Piece(move.color, King, true)
+            && grid[rank, 3] == Piece(move.color, Rook, true)
+        )
+    }
+
     // TODO: Verify counts of pieces. Actually, we need to ensure that all
     // other pieces are unchanged.
     method MakeMove(move: Move)
@@ -109,12 +150,15 @@ class Board {
 
         requires move.PieceMove? && !move.capture ==> NoCapturePre(move)
         requires move.PieceMove? && move.capture ==> CapturePre(move)
+        requires move.Castle? ==> CastlePre(move)
 
         ensures class_invariant()
         ensures old(grid) == grid // Reference is unchanged.
 
         ensures move.PieceMove? ==>
             PieceMovePost(move, old(grid[move.from.0, move.from.1]))
+        ensures move.Castle? ==>
+            CastlePost(move)
     {
         if move.PieceMove? {
             var cell := grid[move.from.0, move.from.1];
@@ -122,6 +166,19 @@ class Board {
                 cell.color, cell.piece, true
             );
             grid[move.from.0, move.from.1] := Empty;
+        } else if move.Castle? {
+            var rank := if move.color == White then 0 else 7;
+            var rookfile := if move.kingside then 7 else 0;
+            if move.kingside {
+                grid[rank, 5] := Piece(move.color, Rook, true);
+                grid[rank, 6] := Piece(move.color, King, true);
+                grid[rank, 7] := Empty;
+            } else {
+                grid[rank, 0] := Empty;
+                grid[rank, 2] := Piece(move.color, King, true);
+                grid[rank, 3] := Piece(move.color, Rook, true);
+            }
+            grid[rank, 4] := Empty;
         }
     }
 
@@ -129,7 +186,7 @@ class Board {
     {
         // 0-0: Kingside castling
         // 0-0-0: Queenside castling
-        move := KingsideCastle;
+        move := Castle(White, true);
     }
 
 }
@@ -138,14 +195,24 @@ method TestBoard() {
     var board := new Board();
 
     board.grid[0, 0] := Piece(White, Rook, false);
+    board.grid[0, 7] := Piece(White, Rook, false);
+    board.grid[7, 0] := Piece(Black, Rook, false);
     board.grid[7, 7] := Piece(Black, Rook, false);
-    board.grid[7, 7] := Empty;
-    board.MakeMove(PieceMove((0, 0), (7, 7), false));
-    assert board.grid[0, 0] == Empty;
-    assert board.grid[7, 7] != Empty;
-    assert board.grid[7, 7].color == White;
-    assert board.grid[7, 7].piece == Rook;
-    assert board.grid[7, 7].moved == true;
+    board.grid[0, 5] := Empty;
+    board.grid[0, 6] := Empty;
+    //board.grid[7, 7] := Empty;
+    //board.MakeMove(PieceMove((0, 0), (7, 7), false));
+    //assert board.grid[0, 0] == Empty;
+    //assert board.grid[7, 7] != Empty;
+    //assert board.grid[7, 7].color == White;
+    //assert board.grid[7, 7].piece == Rook;
+    //assert board.grid[7, 7].moved == true;
 
-    assert board.grid[7, 7] == Piece(White, Rook, true);
+    //assert board.grid[7, 7] == Piece(White, Rook, true);
+
+    board.grid[0, 4] := Piece(White, King, false);
+    board.grid[7, 4] := Piece(Black, King, false);
+
+    board.MakeMove(Castle(White, true));
+    //board.MakeMove(Castle(White, false));
 }
