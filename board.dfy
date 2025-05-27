@@ -367,9 +367,6 @@ class Board {
 
         // Ensure the move was added, and that the rest of the sequence is the same
         ensures this.moves == old(this.moves) + [move]
-        ensures |this.moves| == old(|this.moves|) + 1
-        ensures this.moves[|this.moves| - 1] == move
-        ensures |this.moves| > 0 ==> forall i:int :: 0 <= i < |this.moves| - 1 ==> this.moves[i] == old(this.moves[i])
     {
         if move.PieceMove? {
             var cell := grid[move.from.0, move.from.1];
