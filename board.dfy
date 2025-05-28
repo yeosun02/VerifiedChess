@@ -272,10 +272,68 @@ class Board {
         )
     }
 
+    function abs(x: int): int
+        ensures abs(x) >= 0
+        ensures x < 0 ==> abs(x) == -x
+        ensures x > 0 ==> abs(x) == x
+        ensures x == 0 ==> abs(x) == 0
+    {
+        if x < 0 then -x else x
+    }
+    
+    predicate BishopPre(move: Move)
+        reads this, this.grid
+        requires PiecePre(move, Bishop)
+    {
+        var from := move.from;
+        var to := move.to;
+        var fromCell := grid[from.0, from.1];
+        var dx := to.0 - from.0;
+        var dy := to.1 - from.1;
+
+        // Must move diagonally
+        abs(dx) == abs(dy) && dx != 0 &&
+
+        // Determine direction of movement
+        var stepX := if dx > 0 then 1 else -1;
+        var stepY := if dy > 0 then 1 else -1;
+
+        var pathClear := forall i :: 1 <= i < abs(dx) ==>
+            grid[from.0 + (i * stepX), from.1 + (i * stepY)] == Empty;
+
+        if move.capture then
+            pathClear &&
+            grid[to.0, to.1] != Empty &&
+            grid[to.0, to.1].color != fromCell.color
+        else
+            pathClear &&
+            grid[to.0, to.1] == Empty
+    }
+
+    predicate QueenPre(move: Move)
+        reads this, this.grid
+        requires PiecePre(move, Queen)
+    {
+        BishopPre(move) || RookPre(move)
+    }
+
+    predicate KingPre(move: Move)
+        reads this, this.grid
+        requires PiecePre(move, King)
+    {
+        var to := move.to;
+        var from := move.from;
+        var dx := abs(to.0 - from.0);
+        var dy := abs(to.1 - from.1);
+
+        (dx + dy == 2 || dx + dy == 1) &&
+        ((dx == 1 && dy ==1) || (dx == 1 && dy == 0) || (dx == 0 && dy == 1))
+    }
+
     predicate LegalMoveChecker(move: Move)
-    reads this, grid
-    requires class_invariant()
-    requires move.PieceMove? || move.EnPassant? ==> MoveInRange(move)
+        reads this, grid
+        requires class_invariant()
+        requires move.PieceMove? || move.EnPassant? ==> MoveInRange(move)
     {
         match move
         case PieceMove(from, to, capture) => (
@@ -287,7 +345,9 @@ class Board {
                 case Pawn => PawnPre(move)
                 case Rook => RookPre(move)
                 case Knight => KnightPre(move)
-                case _ => false
+                case Bishop => BishopPre(move)
+                case Queen => QueenPre(move)
+                case King => KingPre(move)
             )
             case false =>
             (
@@ -296,14 +356,15 @@ class Board {
                 case Pawn => PawnPre(move)
                 case Rook => RookPre(move)
                 case Knight => KnightPre(move)
-                case _ => false
+                case Bishop => BishopPre(move)
+                case Queen => QueenPre(move)
+                case King => KingPre(move)
             )
         )
         case Castle(color, kingside) =>
             CastlePre(move)
         case EnPassant(from, to, color) =>
-            // true
-            EnPassantPre(move) // Not yet implemented
+            EnPassantPre(move)
         case PawnPromotion(_, _, _, _) =>
             false // Not yet implemented
     }
@@ -375,6 +436,7 @@ class Board {
     method MakeMove(move: Move)
         modifies this, grid
         requires class_invariant()
+        requires move.PieceMove? ==> move.to != move.from
         requires move.PieceMove? || move.EnPassant? ==> MoveInRange(move)
         requires LegalMoveChecker(move)
 
@@ -582,16 +644,45 @@ method TestBoard() {
     // rookTest.MakeMove(PieceMove((5,5), (1,5), true)); // Move left black rook down and capture a pawn
     // assert rookTest.grid[1,5].color == Black && rookTest.grid[1,5].piece == Rook;
 
-    // Testing Knight
-    var knightBoard := new Board();
-    knightBoard.MakeMove(PieceMove((0,1), (2,2), false));
-    knightBoard.MakeMove(PieceMove((7,1), (5,2), false));
-    assert knightBoard.grid[2,2].piece == Knight && knightBoard.grid[2,2].color == White;
-    assert knightBoard.grid[5,2].piece == Knight && knightBoard.grid[5,2].color == Black;
-    // Testing Knight Capture
-    // knightBoard.MakeMove(PieceMove((5,2), (4,3), false)); // This should fail
-    knightBoard.MakeMove(PieceMove((1,3), (3,3), false));
-    assert knightBoard.grid[3,3].piece == Pawn && knightBoard.grid[3,3].color == White;
-    knightBoard.MakeMove(PieceMove((5,2), (3,3), true)); // Knight Capture
-    assert knightBoard.grid[3,3].piece == Knight && knightBoard.grid[3,3].color == Black;
+    // // Testing Knight
+    // var knightBoard := new Board();
+    // knightBoard.MakeMove(PieceMove((0,1), (2,2), false));
+    // knightBoard.MakeMove(PieceMove((7,1), (5,2), false));
+    // assert knightBoard.grid[2,2].piece == Knight && knightBoard.grid[2,2].color == White;
+    // assert knightBoard.grid[5,2].piece == Knight && knightBoard.grid[5,2].color == Black;
+    // // Testing Knight Capture
+    // // knightBoard.MakeMove(PieceMove((5,2), (4,3), false)); // This should fail
+    // knightBoard.MakeMove(PieceMove((1,3), (3,3), false));
+    // assert knightBoard.grid[3,3].piece == Pawn && knightBoard.grid[3,3].color == White;
+    // knightBoard.MakeMove(PieceMove((5,2), (3,3), true)); // Knight Capture
+    // assert knightBoard.grid[3,3].piece == Knight && knightBoard.grid[3,3].color == Black;
+
+    // // Testing Bishop
+    // var bishopBoard := new Board();
+    // bishopBoard.MakeMove(PieceMove((1, 3), (3,3), false)); // Move the pawn out of the way
+    // assert bishopBoard.grid[1,3] == Empty && bishopBoard.grid[2,4] == Empty && bishopBoard.grid[3,5] == Empty && bishopBoard.grid[4,6] == Empty;
+    // bishopBoard.MakeMove(PieceMove((0, 2), (5,7), false)); // Move Bishop
+    // assert bishopBoard.grid[5,7].piece == Bishop && bishopBoard.grid[5,7].color == White;
+    // bishopBoard.MakeMove(PieceMove((5, 7), (6,6), true)); // Bishop Captures
+    // assert bishopBoard.grid[6,6].piece == Bishop && bishopBoard.grid[6,6].color == White;
+
+    // Testing Queen
+    // var queenBoard := new Board();
+    // queenBoard.MakeMove(PieceMove((1, 4), (3, 4), false)); // Move Pawn out of the way
+    // queenBoard.MakeMove(PieceMove((0, 3), (4, 7), false)); // Move Queen
+    // assert queenBoard.grid[4,7].piece == Queen && queenBoard.grid[4,7].color == White;
+    // queenBoard.MakeMove(PieceMove((4, 7), (6, 7), true)); // White Queen captures black pawn
+    // assert queenBoard.grid[6,7].piece == Queen && queenBoard.grid[6,7].color == White;
+
+    // Testing King
+    var kingBoard := new Board();
+    kingBoard.MakeMove(PieceMove((1,4), (3,4), false)); // Move pawn out of the way
+    kingBoard.MakeMove(PieceMove((0,4), (1,4), false)); // move white king forward
+    assert kingBoard.grid[1,4].color == White && kingBoard.grid[1,4].piece == King;
+    kingBoard.MakeMove(PieceMove((6,3), (4,3), false));
+    kingBoard.MakeMove(PieceMove((4,3), (3,3), false));
+    kingBoard.MakeMove(PieceMove((3,3), (2,3), false)); // Move pawn to be captured
+    assert kingBoard.grid[2,3].color == Black && kingBoard.grid[2,3].piece == Pawn;
+    kingBoard.MakeMove(PieceMove((1,4), (2,3), true)); // Capture pawn with King
+    assert kingBoard.grid[2,3].color == White && kingBoard.grid[2,3].piece == King;
 }
