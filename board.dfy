@@ -161,7 +161,7 @@ class Board {
         class_invariant() &&
         move_in_range(move) &&
         (move.capture == false ==> no_capture_pre(move)) &&
-        (move.capture == true ==> capture_pre(move)) //&&
+        (move.capture == true ==> capture_pre(move)) // &&
         
         // grid[move.from.0, move.from.1] != Empty &&
         // grid[move.from.0, move.from.1].piece == piece &&
@@ -189,7 +189,7 @@ class Board {
             else // Pawn capture case
                 (to.0 == from.0 + 1) && // Moves up a row
                 (to.1 == from.1 + 1 || to.1 == from.1 - 1) //&& // Moves Diagonal 1
-                // (grid[to.0, to.1] != Empty) // There's a piece at the destination
+                // && (grid[to.0, to.1] != Empty) // There's a piece at the destination
         case Black =>
             if !move.capture then
                 (to.1 == from.1) &&
@@ -526,6 +526,10 @@ class Board {
 
 method TestBoard() {
     var board := new Board();
+    // Make first move - two step pawn
+    board.MakeMove(PieceMove((1,0), (3,0), false));
+    assert board.grid[1,0] == Empty;
+    assert board.grid[3,0].piece == Pawn;
 
     // Checking initial board
     assert board.grid[0,0] == Piece(White, Rook, false);
@@ -537,8 +541,6 @@ method TestBoard() {
     assert board.grid[0,6] == Piece(White, Knight, false);
     assert board.grid[0,7] == Piece(White, Rook, false);
 
-    // Make first move - two step pawn
-    board.MakeMove(PieceMove((1,0), (3,0), false));
 
     // board.grid[0, 0] := Piece(White, Rook, false);
     // board.grid[0, 7] := Piece(White, Rook, false);
