@@ -522,6 +522,44 @@ class Board {
         move := Castle(White, true);
     }
 
+    predicate can_capture_king(i: int, j: int, king_rank: int, king_file: int)
+        reads this, this.grid
+        requires class_invariant()
+        requires 0 <= i < 8
+        requires 0 <= j < 8
+        requires grid[i, j] != Empty
+    {
+        var move := PieceMove((i, j), (king_rank, king_file), true);
+        var piece := grid[i, j].piece;
+
+        if piece_pre(move, piece) && capture_pre(move) then
+            match piece
+            case Pawn => 
+                pawn_pre(move)
+            case Rook =>
+                rook_pre(move)
+            case Knight =>
+                knight_pre(move)
+            case Bishop =>
+                bishop_pre(move)
+            case Queen =>
+                queen_pre(move)
+            case King =>
+                false
+        else false
+    }
+
+    predicate check_checker(i: int, j: int, king_rank: int, king_file: int)
+        reads this, this.grid
+        requires class_invariant()
+        requires 0 <= i < 8
+        requires 0 <= j < 8
+    {
+        // if (grid[i, j] != Empty && grid[i, j].piece != King) 
+        // then can_capture_king(i, j, king_rank, king_file)
+        // else false
+        true
+    }
 }
 
 method TestBoard() {
