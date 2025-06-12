@@ -21,12 +21,17 @@ class Board {
     function class_invariant(): bool
         reads this, grid
     {
-        grid.Length0 == 8 &&
-        grid.Length1 == 8 &&
-        |moves| >= 0
+        && grid.Length0 == 8
+        && grid.Length1 == 8
+        && |moves| >= 0
         // TODO: Number of each color's kings is exactly one.
         // Optional: We can make sure each piece count is not above a certain
         // amount.
+        && 0 <= white_king.0 < 8 && 0 <= white_king.1 < 8
+        && grid[white_king.0, white_king.1] != Empty && grid[white_king.0, white_king.1].piece == King && grid[white_king.0, white_king.1].color == White
+        && 0 <= black_king.0 < 8 && 0 <= black_king.1 < 8
+        && grid[black_king.0, black_king.1] != Empty && grid[black_king.0, black_king.1].piece == King && grid[black_king.0, black_king.1].color == Black
+        && forall i, j :: 0 <= i < 8 && 0 <= j < 8 && grid[i,j] != Empty && grid[i ,j].piece == King ==> (i, j) == white_king || (i, j) == black_king
     }
 
     // Helper function for creating the initial_board.
@@ -59,6 +64,8 @@ class Board {
         ensures class_invariant() && fresh(grid)
         ensures forall i, j :: 0 <= i < grid.Length0 && 0 <= j < grid.Length1 ==> grid[i, j] == initial_board(i, j)
     {
+        white_king := (0, 4);
+        black_king := (7, 4);
         grid := new Cell[8, 8](initial_board);
         moves := [];
     }
@@ -87,7 +94,7 @@ class Board {
 
     // Does this move describe a valid capture on the board?
     // TODO: Exceptions for en passant.
-    function capture_pre(move: Move): bool
+    function capture_pre(move: Move, checking_check: bool): bool
         requires move.PieceMove? || move.EnPassant?
         requires move.PieceMove? ==> move.capture
         reads this, grid
@@ -97,6 +104,7 @@ class Board {
         && move_in_range(move)
         && grid[move.from.0, move.from.1] != Empty
         && grid[move.to.0, move.to.1] != Empty
+        && (checking_check || grid[move.to.0, move.to.1].piece != King)
         && grid[move.from.0, move.from.1].color 
             != grid[move.to.0, move.to.1].color
     }
@@ -157,23 +165,23 @@ class Board {
         )
     }
 
-    predicate piece_pre(move: Move, piece: Piece)
+    predicate piece_pre(move: Move, piece: Piece, checking_check: bool)
     reads this, this.grid
     {
         move.PieceMove? &&
         class_invariant() &&
         move_in_range(move) &&
         (move.capture == false ==> no_capture_pre(move)) &&
-        (move.capture == true ==> capture_pre(move)) // &&
+        (move.capture == true ==> capture_pre(move, checking_check)) // &&
         
         // grid[move.from.0, move.from.1] != Empty &&
         // grid[move.from.0, move.from.1].piece == piece &&
         // grid[move.to.0, move.to.1] == Empty
     }
 
-    predicate pawn_pre(move: Move)
+    predicate pawn_pre(move: Move, checking_check: bool)
         reads this, this.grid
-        requires piece_pre(move, Pawn)
+        requires piece_pre(move, Pawn, checking_check)
     {
         var cell := grid[move.from.0, move.from.1];
         var color := cell.color;
@@ -205,9 +213,9 @@ class Board {
                 grid[to.0, to.1] != Empty
     }
 
-    predicate rook_pre(move: Move)
+    predicate rook_pre(move: Move, checking_check: bool)
         reads this, this.grid
-        requires piece_pre(move, Rook)
+        requires piece_pre(move, Rook, checking_check)
     {
         var from := move.from;
         var to := move.to;
@@ -254,9 +262,9 @@ class Board {
         else false
     }
 
-    predicate knight_pre(move: Move)
+    predicate knight_pre(move: Move, checking_check: bool)
         reads this, this.grid
-        requires piece_pre(move, Knight)
+        requires piece_pre(move, Knight, checking_check)
     {
         var from := move.from;
         var to := move.to;
@@ -284,9 +292,9 @@ class Board {
         if x < 0 then -x else x
     }
     
-    predicate bishop_pre(move: Move)
+    predicate bishop_pre(move: Move, checking_check: bool)
         reads this, this.grid
-        requires piece_pre(move, Bishop)
+        requires piece_pre(move, Bishop, checking_check)
     {
         var from := move.from;
         var to := move.to;
@@ -313,27 +321,28 @@ class Board {
             grid[to.0, to.1] == Empty
     }
 
-    predicate queen_pre(move: Move)
+    predicate queen_pre(move: Move, checking_check: bool)
         reads this, this.grid
-        requires piece_pre(move, Queen)
+        requires piece_pre(move, Queen, checking_check)
     {
-        bishop_pre(move) || rook_pre(move)
+        bishop_pre(move, checking_check) || rook_pre(move, checking_check)
     }
 
-    predicate king_pre(move: Move)
+    predicate king_pre(move: Move, checking_check: bool)
         reads this, this.grid
-        requires piece_pre(move, King)
+        requires piece_pre(move, King, checking_check)
     {
         var to := move.to;
         var from := move.from;
         var dx := abs(to.0 - from.0);
         var dy := abs(to.1 - from.1);
 
-        (dx + dy == 2 || dx + dy == 1) &&
-        ((dx == 1 && dy ==1) || (dx == 1 && dy == 0) || (dx == 0 && dy == 1))
+        && (dx + dy == 2 || dx + dy == 1) 
+        && ((dx == 1 && dy ==1) || (dx == 1 && dy == 0) || (dx == 0 && dy == 1))
+        && (grid[move.to.0, move.to.1] == Empty || grid[move.to.0, move.to.1].piece != King)
     }
 
-    predicate legal_move_checker(move: Move)
+    predicate legal_move_checker(move: Move, checking_check: bool)
         reads this, grid
         requires class_invariant()
         requires move.PieceMove? || move.EnPassant? ==> move_in_range(move)
@@ -343,25 +352,25 @@ class Board {
             move_in_range(move) &&
             match move.capture
             case true => (
-                capture_pre(move) &&
+                capture_pre(move, checking_check) &&
                 match grid[move.from.0, move.from.1].piece
-                case Pawn => pawn_pre(move)
-                case Rook => rook_pre(move)
-                case Knight => knight_pre(move)
-                case Bishop => bishop_pre(move)
-                case Queen => queen_pre(move)
-                case King => king_pre(move)
+                case Pawn => pawn_pre(move, checking_check)
+                case Rook => rook_pre(move, checking_check)
+                case Knight => knight_pre(move, checking_check)
+                case Bishop => bishop_pre(move, checking_check)
+                case Queen => queen_pre(move, checking_check)
+                case King => king_pre(move, checking_check)
             )
             case false =>
             (
                 no_capture_pre(move) &&
                 match grid[move.from.0, move.from.1].piece
-                case Pawn => pawn_pre(move)
-                case Rook => rook_pre(move)
-                case Knight => knight_pre(move)
-                case Bishop => bishop_pre(move)
-                case Queen => queen_pre(move)
-                case King => king_pre(move)
+                case Pawn => pawn_pre(move, checking_check)
+                case Rook => rook_pre(move, checking_check)
+                case Knight => knight_pre(move, checking_check)
+                case Bishop => bishop_pre(move, checking_check)
+                case Queen => queen_pre(move, checking_check)
+                case King => king_pre(move, checking_check)
             )
         )
         case Castle(color, kingside) =>
@@ -434,6 +443,7 @@ class Board {
         // forall i, j :: 0 <= i < grid.Length0 && 0 <= j < grid.Length1 && (i, j) != (from.0, from.1) && (i, j) != (to.0, to.1) && (i, j) != (from.0, to.1) ==> this.grid[i, j] == oldGrid[i, j]
     }
 
+
     // TODO: Verify counts of pieces. Actually, we need to ensure that all
     // other pieces are unchanged.
     method MakeMove(move: Move)
@@ -441,7 +451,7 @@ class Board {
         requires class_invariant()
         requires move.PieceMove? ==> move.to != move.from
         requires move.PieceMove? || move.EnPassant? ==> move_in_range(move)
-        requires legal_move_checker(move)
+        requires legal_move_checker(move, false)
 
         ensures class_invariant()
         ensures move.PieceMove? ==> piece_move_post(move, old(grid[move.from.0, move.from.1]))
@@ -472,6 +482,22 @@ class Board {
                     cell.color, cell.piece, true
                 );
                 grid[move.from.0, move.from.1] := Empty;
+            case King =>
+                if (move.from == white_king) {
+                    var cell := grid[move.from.0, move.from.1];
+                    grid[move.to.0, move.to.1] := Piece(
+                        White, King, true
+                    );
+                    grid[move.from.0, move.from.1] := Empty;
+                    white_king := (move.to.0, move.to.1);
+                } else if (move.from == black_king) {
+                    var cell := grid[move.from.0, move.from.1];
+                    grid[move.to.0, move.to.1] := Piece(
+                        Black, King, true
+                    );
+                    grid[move.from.0, move.from.1] := Empty;
+                    black_king := (move.to.0, move.to.1);
+                }
             case _ =>
                 var cell := grid[move.from.0, move.from.1];
                 grid[move.to.0, move.to.1] := Piece(
@@ -485,10 +511,20 @@ class Board {
                 grid[rank, 5] := Piece(move.color, Rook, true);
                 grid[rank, 6] := Piece(move.color, King, true);
                 grid[rank, 7] := Empty;
+                if (move.color == White) {
+                    white_king := (rank, 6);
+                } else {
+                    black_king := (rank, 6);
+                }
             } else {
                 grid[rank, 0] := Empty;
                 grid[rank, 2] := Piece(move.color, King, true);
                 grid[rank, 3] := Piece(move.color, Rook, true);
+                if (move.color == White) {
+                    white_king := (rank, 2);
+                } else {
+                    black_king := (rank, 2);
+                }
             }
             grid[rank, 4] := Empty;
         } else if move.EnPassant? {
@@ -535,38 +571,45 @@ class Board {
         var move := PieceMove((i, j), (king_rank, king_file), true);
         var piece := grid[i, j].piece;
 
-        if piece_pre(move, piece) && capture_pre(move) then
+        if piece_pre(move, piece, true) then
             match piece
             case Pawn => 
-                pawn_pre(move)
+                pawn_pre(move, true)
             case Rook =>
-                rook_pre(move)
+                rook_pre(move, true)
             case Knight =>
-                knight_pre(move)
+                knight_pre(move, true)
             case Bishop =>
-                bishop_pre(move)
+                bishop_pre(move, true)
             case Queen =>
-                queen_pre(move)
+                queen_pre(move, true)
             case King =>
                 false
         else false
     }
 
-    predicate check_checker(i: int, j: int, king_rank: int, king_file: int)
+    predicate check_checker(turn: Color)
         reads this, this.grid
         requires class_invariant()
-        requires 0 <= i < 8
-        requires 0 <= j < 8
-        requires 0 <= king_rank < 8
-        requires 0 <= king_file < 8
-        requires grid[king_rank, king_file] != Empty
-        requires grid[king_rank, king_file].piece == King
     {
-        if (grid[i, j] != Empty && grid[i, j].piece != King && grid[king_rank, king_file].color != grid[i, j].color) 
-        then can_capture_king(i, j, king_rank, king_file)
-        else false
+        exists i, j :: 0 <= i < 8 && 0 <= j < 8 &&(
+            if (turn == White) then
+                if (grid[i, j] != Empty && grid[i, j].piece != King && Black == grid[i, j].color) 
+                then can_capture_king(i, j, white_king.0, white_king.1)
+                else false
+            else 
+                if (grid[i, j] != Empty && grid[i, j].piece != King && White == grid[i, j].color) 
+                then can_capture_king(i, j, black_king.0, black_king.1)
+                else false)
     }
 
+    // predicate game_over(king_rank: int, king_file: int)
+    //     reads this, this.grid
+    //     requires class_invariant()
+    // {
+    //     forall dx, dy, i, j ::  -1 <= dx <= 1 && -1 <= dy <= 1 && 0 <= king_rank + dx < 8 && 0 <= king_file + dy < 8 && 0 <= i < 8 && 0 <= j <8
+    //             ==> check_checker(i, j, king_rank + dx, king_file + dy)
+    // }
 }
 
 method TestBoard() {
@@ -577,15 +620,16 @@ method TestBoard() {
     // assert board.grid[6,4] == Empty;
     assert board.grid[4,4].piece == Pawn;
     assert board.grid[6,4].piece == King;
-    assert forall i, j :: 0 <= i < 8 && 0 <= j < 8 ==> !board.check_checker(i, j, 6, 4);
+    assert !board.check_checker(White);
     board.MakeMove(PieceMove((1,3), (3,3), false));
     board.MakeMove(PieceMove((3,3), (4,3), false));
     board.MakeMove(PieceMove((4,3), (5,3), false));
     assert board.grid[5,3].piece == Pawn && board.grid[5,3].color == White;
     assert board.grid[6,4].piece == King && board.grid[6,4].color == Black;
 
-    assert board.check_checker(5, 3, 6, 4);
-    assert exists i, j :: 0 <= i < 8 && 0 <= j < 8 && board.check_checker(i, j, 6, 4);
+    assert board.check_checker(Black);
+    // assert board.check_checker(5, 3, Black);
+    // assert exists i, j :: 0 <= i < 8 && 0 <= j < 8 && board.check_checker(i, j, Black);
 
     // Checking initial board
     // assert board.grid[0,0] == Piece(White, Rook, false);
