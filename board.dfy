@@ -444,8 +444,6 @@ class Board {
     }
 
 
-    // TODO: Verify counts of pieces. Actually, we need to ensure that all
-    // other pieces are unchanged.
     method MakeMove(move: Move)
         modifies this, grid
         requires class_invariant()
@@ -456,17 +454,44 @@ class Board {
         ensures class_invariant()
         ensures move.PieceMove? ==> piece_move_post(move, old(grid[move.from.0, move.from.1]))
         ensures move.Castle? ==> castle_post(move)
-        ensures move.EnPassant? ==> en_passant_post(move, old(this.grid))
-        ensures move.EnPassant? ==> 
-            forall i, j :: 0 <= i < grid.Length0 && 0 <= j < grid.Length1 && (i, j) != (move.from.0, move.from.1) && (i, j) != (move.to.0, move.to.1) && (i, j) != (move.from.0, move.to.1) ==> grid[i, j] == old(grid[i, j])
+        ensures move.EnPassant? ==> en_passant_post(move, old(grid))
 
-        ensures this.moves == old(this.moves) + [move]
-        ensures this.grid == old(this.grid) // Needed for some reason
+        ensures moves == old(moves) + [move]
+        ensures grid == old(grid) // Needed for some reason
 
         // Ensure NOTHING ELSE CHANGED IN THE BOARD
-        ensures move.PieceMove? ==> forall i, j :: 0 <= i < this.grid.Length0 && 0 <= j < this.grid.Length1 && (i, j) != move.from && (i, j) != move.to ==> this.grid[i, j] == old(this.grid[i, j])
+        ensures move.PieceMove? ==> (
+            forall i, j :: (
+                0 <= i < grid.Length0 && 0 <= j < grid.Length1
+                && (i, j) != move.from 
+                && (i, j) != move.to 
+            ) ==> (
+                grid[i, j] == old(grid[i, j])
+            )
+        )
 
-        // TODO: Ensure nothing else changed in the board for Castle, then En Passant
+        ensures move.Castle? ==> (
+            forall i, j :: (
+                0 <= i < grid.Length0 && 0 <= j < grid.Length1
+                && (i, j) != (if move.color == White then 0 else 7, 4) // King start
+                && (i, j) != (if move.color == White then 0 else 7, if move.kingside then 6 else 2) // King stop
+                && (i, j) != (if move.color == White then 0 else 7, if move.kingside then 7 else 0) // Rook start
+                && (i, j) != (if move.color == White then 0 else 7, if move.kingside then 5 else 3) // Rook stop
+            ) ==> (
+                grid[i, j] == old(grid[i, j])
+            )
+        )
+
+        ensures move.EnPassant? ==> (
+            forall i, j :: (
+                0 <= i < grid.Length0 && 0 <= j < grid.Length1
+                && (i, j) != (move.from.0, move.from.1)
+                && (i, j) != (move.to.0, move.to.1)
+                && (i, j) != (move.from.0, move.to.1)
+            ) ==> (
+                grid[i, j] == old(grid[i, j])
+            )
+        )
 
         // Ensure the move was added, and that the rest of the sequence is the same
         ensures this.moves == old(this.moves) + [move]
